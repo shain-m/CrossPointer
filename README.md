@@ -32,4 +32,13 @@ npx serve apps/controller-ui/out
 Then open the displayed local URL in a browser. The desktop proof remains Windows-only
 because its native input adapter uses `user32.dll` through `koffi`.
 
+## Windows host proof harness
+
+Run `npm run desktop:start` on the reference Windows machine. The dashboard includes
+presentation key buttons, a drag test, host capability reporting, and a diagnostic log.
+Use **Ctrl+Shift+H** or **Emergency Stop / Release All** to hide the laser and release
+any held mouse buttons or keys. Test presentation actions with a browser slideshow and
+with a native PowerPoint/PDF presentation; focus the target presentation before using
+Next Slide, Previous Slide, Start, Exit, or Blank Screen.
+
 Network transport, pairing, and QR flows are intentionally not implemented yet.

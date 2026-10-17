@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CrossPointer Windows proof</title>
+  <title>CrossPointer Windows host proof</title>
   <style>
     :root {
       --page: #f5f5f3;
@@ -13,6 +13,8 @@
       --text: #1d1d1b;
       --text-quiet: #5f5f5a;
       --accent: #e24b4a;
+      --danger: #a6312e;
+      --ok: #28784c;
     }
     * { box-sizing: border-box; }
     body {
@@ -23,9 +25,9 @@
       font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
     .wrap { max-width: 760px; margin: 0 auto; }
-    .controls {
+    .controls, .button-grid {
       display: flex;
-      gap: 16px;
+      gap: 10px;
       align-items: center;
       flex-wrap: wrap;
       margin: 0 0 12px;
@@ -50,6 +52,19 @@
       outline: 2px solid #378add;
       outline-offset: 2px;
     }
+    button.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    section {
+      margin: 18px 0;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    h1 { margin-top: 0; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
     #trackpad {
       position: relative;
       height: 260px;
@@ -78,29 +93,81 @@
       bottom: 18px;
     }
     #status { min-height: 1.4em; color: var(--text-quiet); }
+    #capabilities {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin: 0;
+    }
+    .capability {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--text-quiet);
+    }
+    .capability strong { color: var(--ok); }
+    #log {
+      min-height: 80px;
+      margin: 0;
+      padding: 10px;
+      overflow: auto;
+      background: #f1f1ed;
+      color: var(--text-quiet);
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
   <main class="wrap">
     <h1>Windows host proof</h1>
-    <div class="controls">
-      <button id="toggle" type="button">Pointer Off</button>
-      <label>Laser Size
-        <input id="size" type="range" min="40" max="130" value="85" step="1">
-        <output id="size-value">85</output>
-      </label>
-      <label>Dot Spacing
-        <input id="dot-spacing" type="range" min="6" max="16" value="9" step="1">
-        <output id="dot-spacing-value">9</output>
-      </label>
-      <label>Pop Speed
-        <input id="pop-speed" type="range" min="0" max="3" value="1.2" step="0.1">
-        <output id="pop-speed-value">1.2</output>
-      </label>
-      <button id="kick" type="button">Trigger Pop/Kick</button>
-    </div>
-    <div id="trackpad" role="application" aria-label="Laser test pad"></div>
-    <p id="status" role="status"></p>
+    <section aria-labelledby="laser-heading">
+      <h2 id="laser-heading">Laser overlay</h2>
+      <div class="controls">
+        <button id="toggle" type="button">Pointer Off</button>
+        <label>Laser Size
+          <input id="size" type="range" min="40" max="130" value="85" step="1">
+          <output id="size-value">85</output>
+        </label>
+        <label>Dot Spacing
+          <input id="dot-spacing" type="range" min="6" max="16" value="9" step="1">
+          <output id="dot-spacing-value">9</output>
+        </label>
+        <label>Pop Speed
+          <input id="pop-speed" type="range" min="0" max="3" value="1.2" step="0.1">
+          <output id="pop-speed-value">1.2</output>
+        </label>
+        <button id="kick" type="button">Trigger Pop/Kick</button>
+      </div>
+      <div id="trackpad" role="application" aria-label="Laser test pad"></div>
+    </section>
+
+    <section aria-labelledby="presentation-heading">
+      <h2 id="presentation-heading">Presentation actions</h2>
+      <div class="button-grid">
+        <button data-action="next" type="button">Next Slide</button>
+        <button data-action="previous" type="button">Previous Slide</button>
+        <button data-action="start" type="button">Start (F5)</button>
+        <button data-action="exit" type="button">Exit (Esc)</button>
+        <button data-action="blank" type="button">Blank Screen (B)</button>
+      </div>
+      <div class="button-grid">
+        <button id="drag" type="button">Test Drag &amp; Drop</button>
+        <button id="emergency" class="danger" type="button">Emergency Stop / Release All</button>
+      </div>
+      <p>Emergency shortcut: Ctrl+Shift+H</p>
+    </section>
+
+    <section aria-labelledby="capabilities-heading">
+      <h2 id="capabilities-heading">Host capabilities</h2>
+      <div id="capabilities">Loading capabilities…</div>
+    </section>
+
+    <section aria-labelledby="diagnostics-heading">
+      <h2 id="diagnostics-heading">Diagnostic log</h2>
+      <pre id="log" aria-live="polite"></pre>
+      <p id="status" role="status"></p>
+    </section>
   </main>
   <script>
     (() => {
@@ -111,12 +178,24 @@
       const popSpeed = document.getElementById('pop-speed');
       const trackpad = document.getElementById('trackpad');
       const status = document.getElementById('status');
+      const logPanel = document.getElementById('log');
       const values = {
         size: document.getElementById('size-value'),
         dotSpacing: document.getElementById('dot-spacing-value'),
         popSpeed: document.getElementById('pop-speed-value'),
       };
       let on = true;
+      let logEntries = [];
+
+      function log(message) {
+        logEntries = [`${new Date().toLocaleTimeString()} ${message}`, ...logEntries].slice(0, 8);
+        logPanel.textContent = logEntries.join('\n');
+        status.textContent = message;
+      }
+
+      function run(label, operation) {
+        operation.then(() => log(`${label}: OK`)).catch((error) => log(`${label}: ${error.message}`));
+      }
 
       function config() {
         return {
@@ -132,9 +211,7 @@
         values.size.value = nextConfig.size;
         values.dotSpacing.value = nextConfig.dotSpacing;
         values.popSpeed.value = nextConfig.popSpeed.toFixed(1);
-        api.updateLaserConfig(nextConfig)
-          .then(() => { status.textContent = 'Laser configuration updated.'; })
-          .catch((error) => { status.textContent = error.message; });
+        run('Laser configuration', api.updateLaserConfig(nextConfig));
       }
 
       function sendPosition(event) {
@@ -143,8 +220,21 @@
         const localY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
         const screenX = (window.screen.availLeft || 0) + window.screen.width * localX / rect.width;
         const screenY = (window.screen.availTop || 0) + window.screen.height * localY / rect.height;
-        api.setOverlayPosition(screenX, screenY)
-          .catch((error) => { status.textContent = error.message; });
+        run('Laser position', api.setOverlayPosition(screenX, screenY));
+      }
+
+      function renderCapabilities(capabilities) {
+        const rows = [
+          ['Relative Move', capabilities.relativeMove],
+          ['Absolute Laser', capabilities.absoluteLaser],
+          ['Presentation Keys', capabilities.presentationKeys],
+        ];
+        document.getElementById('capabilities').innerHTML =
+          `<div class="capability"><span>${capabilities.platform}</span><strong>Supported</strong></div>` +
+          rows.map(([label, supported]) =>
+            `<div class="capability"><span>${label}</span><strong>${supported ? '✓' : '—'}</strong></div>`
+          ).join('');
+        log('Host capabilities loaded');
       }
 
       toggle.addEventListener('click', () => {
@@ -152,22 +242,29 @@
         toggle.textContent = on ? 'Pointer On' : 'Pointer Off';
         sendConfig();
       });
-      [size, dotSpacing, popSpeed].forEach((control) => {
-        control.addEventListener('input', sendConfig);
-      });
+      [size, dotSpacing, popSpeed].forEach((control) => control.addEventListener('input', sendConfig));
       trackpad.addEventListener('pointermove', sendPosition);
       trackpad.addEventListener('pointerdown', (event) => {
         sendPosition(event);
-        api.kickLaser()
-          .then(() => { status.textContent = 'Laser pop triggered.'; })
-          .catch((error) => { status.textContent = error.message; });
+        run('Laser pop', api.kickLaser());
       });
-      document.getElementById('kick').addEventListener('click', () => {
-        api.kickLaser()
-          .then(() => { status.textContent = 'Laser pop triggered.'; })
-          .catch((error) => { status.textContent = error.message; });
+      document.getElementById('kick').addEventListener('click', () => run('Laser pop', api.kickLaser()));
+      document.querySelectorAll('[data-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const action = button.dataset.action;
+          run(`Presentation ${action}`, api.pressPresentationAction(action));
+        });
+      });
+      document.getElementById('drag').addEventListener('click', () => {
+        run('Drag test', api.buttonDown('left')
+          .then(() => api.moveRelative(160, 0))
+          .then(() => api.buttonUp('left')));
+      });
+      document.getElementById('emergency').addEventListener('click', () => {
+        run('Emergency stop', api.emergencyHide());
       });
 
+      run('Capability query', api.getCapabilities().then(renderCapabilities));
       sendConfig();
     })();
   </script>

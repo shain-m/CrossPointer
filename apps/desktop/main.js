@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const windowsInput = require('./windows-input');
 
@@ -26,6 +26,30 @@ function numberInRange(value, minimum, maximum, name) {
   return value;
 }
 
+function validateButton(button) {
+  if (button !== 'left' && button !== 'right' && button !== 'middle') {
+    throw new Error('button must be left, right, or middle.');
+  }
+  return button;
+}
+
+function validatePresentationAction(action) {
+  if (!['next', 'previous', 'start', 'exit', 'blank'].includes(action)) {
+    throw new Error('action must be next, previous, start, exit, or blank.');
+  }
+  return action;
+}
+
+function hideLaserAndReleaseInputs() {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.hide();
+    overlayWindow.webContents.send('laser:toggle', false);
+  }
+  if (isWindows) {
+    windowsInput.releaseAllHeldInputs();
+  }
+}
+
 function createDashboard() {
   dashboardWindow = new BrowserWindow({
     width: 480,
@@ -37,6 +61,10 @@ function createDashboard() {
     },
   });
   dashboardWindow.loadFile(path.join(__dirname, 'dashboard.html'));
+  dashboardWindow.on('closed', () => {
+    hideLaserAndReleaseInputs();
+    dashboardWindow = undefined;
+  });
 }
 
 function createOverlay() {
@@ -62,6 +90,9 @@ function createOverlay() {
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
   overlayWindow.loadFile(path.join(__dirname, 'overlay.html'));
+  overlayWindow.on('closed', () => {
+    overlayWindow = undefined;
+  });
 }
 
 function registerIpc() {
@@ -72,16 +103,48 @@ function registerIpc() {
     windowsInput.moveRelative(x, y);
   });
   ipcMain.handle('input:click', (_event, button) => {
-    if (button !== 'left' && button !== 'right') {
-      throw new Error('button must be left or right.');
-    }
+    const validatedButton = validateButton(button);
     assertWindows();
-    windowsInput.click(button);
+    windowsInput.click(validatedButton);
   });
-  ipcMain.handle('input:scroll', (_event, amount) => {
-    const validatedAmount = integerInRange(amount, -1200, 1200, 'amount');
+  ipcMain.handle('input:button-down', (_event, button) => {
+    const validatedButton = validateButton(button);
     assertWindows();
-    windowsInput.scroll(validatedAmount);
+    windowsInput.buttonDown(validatedButton);
+  });
+  ipcMain.handle('input:button-up', (_event, button) => {
+    const validatedButton = validateButton(button);
+    assertWindows();
+    windowsInput.buttonUp(validatedButton);
+  });
+  ipcMain.handle('input:scroll', (_event, deltaX, deltaY) => {
+    const validatedDeltaX = integerInRange(deltaX, -1200, 1200, 'deltaX');
+    const validatedDeltaY = integerInRange(deltaY, -1200, 1200, 'deltaY');
+    assertWindows();
+    windowsInput.scroll(validatedDeltaX, validatedDeltaY);
+  });
+  ipcMain.handle('input:presentation-action', (_event, action) => {
+    const validatedAction = validatePresentationAction(action);
+    assertWindows();
+    const restoreDashboard = dashboardWindow && !dashboardWindow.isDestroyed();
+    if (restoreDashboard) {
+      dashboardWindow.hide();
+    }
+    try {
+      windowsInput.pressPresentationAction(validatedAction);
+    } finally {
+      if (restoreDashboard) {
+        dashboardWindow.showInactive();
+      }
+    }
+  });
+  ipcMain.handle('input:release-all', () => {
+    assertWindows();
+    windowsInput.releaseAllHeldInputs();
+  });
+  ipcMain.handle('input:get-capabilities', () => {
+    assertWindows();
+    return windowsInput.getCapabilities();
   });
   ipcMain.handle('laser:toggle', (_event, visible) => {
     if (typeof visible !== 'boolean') {
@@ -93,6 +156,9 @@ function registerIpc() {
       overlayWindow.hide();
     }
     overlayWindow.webContents.send('laser:toggle', visible);
+  });
+  ipcMain.handle('laser:emergency-hide', () => {
+    hideLaserAndReleaseInputs();
   });
   ipcMain.handle('laser:set-position', (_event, x, y) => {
     const { bounds } = screen.getPrimaryDisplay();
@@ -133,6 +199,19 @@ app.whenReady().then(() => {
   createDashboard();
   createOverlay();
   registerIpc();
+  if (isWindows) {
+    const registered = globalShortcut.register('CommandOrControl+Shift+H', hideLaserAndReleaseInputs);
+    if (!registered) {
+      console.error('Unable to register the emergency laser shortcut Ctrl+Shift+H.');
+    }
+  }
+});
+
+app.on('before-quit', () => {
+  hideLaserAndReleaseInputs();
+  if (isWindows) {
+    globalShortcut.unregisterAll();
+  }
 });
 
 app.on('window-all-closed', () => {
