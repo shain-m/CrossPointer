@@ -22,6 +22,13 @@ const trackpadClick = envelope.extend({
   }),
 });
 
+const trackpadButton = envelope.extend({
+  type: z.enum(['trackpad.button-down', 'trackpad.button-up']),
+  payload: z.object({
+    button: z.enum(['left', 'right', 'middle']),
+  }),
+});
+
 const trackpadScroll = envelope.extend({
   type: z.literal('trackpad.scroll'),
   payload: z.object({
@@ -48,10 +55,45 @@ const laser = envelope.extend({
   ]),
 });
 
+const presentationAction = envelope.extend({
+  type: z.literal('presentation.action'),
+  payload: z.object({
+    action: z.enum(['next', 'previous', 'start', 'exit', 'blank']),
+  }),
+});
+
+const laserToggle = envelope.extend({
+  type: z.literal('laser.toggle'),
+  payload: z.object({ enabled: z.boolean() }),
+});
+
+const laserPosition = envelope.extend({
+  type: z.literal('laser.position'),
+  payload: z.object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+  }),
+});
+
+const laserConfig = envelope.extend({
+  type: z.literal('laser.config'),
+  payload: z.object({
+    enabled: z.boolean(),
+    size: z.number().min(40).max(130),
+    dotSpacing: z.number().min(6).max(16),
+    popSpeed: z.number().min(0).max(3),
+  }),
+});
+
 export const messageSchema = z.discriminatedUnion('type', [
   trackpadMove,
   trackpadClick,
+  trackpadButton,
   trackpadScroll,
+  presentationAction,
+  laserToggle,
+  laserPosition,
+  laserConfig,
   laser,
 ]);
 
@@ -59,6 +101,7 @@ export type ProtocolMessage = z.infer<typeof messageSchema>;
 export type TrackpadMove = z.infer<typeof trackpadMove>;
 export type TrackpadClick = z.infer<typeof trackpadClick>;
 export type TrackpadScroll = z.infer<typeof trackpadScroll>;
+export type PresentationAction = z.infer<typeof presentationAction>;
 export type LaserCommand = z.infer<typeof laser>;
 
 export function parseMessage(input: unknown): ProtocolMessage {

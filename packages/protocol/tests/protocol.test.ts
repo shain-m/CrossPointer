@@ -28,4 +28,25 @@ describe('protocol messages', () => {
       payload: {},
     })).toThrow();
   });
+
+  it('accepts the command messages used by the local controller', () => {
+    expect(parseMessage({
+      version: PROTOCOL_VERSION,
+      sequence: 4,
+      type: 'trackpad.button-down',
+      payload: { button: 'left' },
+    })).toMatchObject({ type: 'trackpad.button-down' });
+    expect(parseMessage({
+      version: PROTOCOL_VERSION,
+      sequence: 5,
+      type: 'presentation.action',
+      payload: { action: 'next' },
+    })).toMatchObject({ type: 'presentation.action' });
+    expect(parseMessage({
+      version: PROTOCOL_VERSION,
+      sequence: 6,
+      type: 'laser.position',
+      payload: { x: 0.5, y: 0.25 },
+    })).toMatchObject({ type: 'laser.position' });
+  });
 });

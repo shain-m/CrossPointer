@@ -116,11 +116,28 @@
       font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
       white-space: pre-wrap;
     }
+    #pairing-card { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: center; }
+    #pairing-qr { width: 240px; height: 240px; image-rendering: pixelated; }
+    #pairing-url { overflow-wrap: anywhere; color: var(--text-quiet); }
+    #pending-list { display: grid; gap: 8px; }
+    .pending { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    @media (max-width: 620px) { #pairing-card { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main class="wrap">
     <h1>Windows host proof</h1>
+    <section aria-labelledby="pairing-heading">
+      <h2 id="pairing-heading">Connect a controller</h2>
+      <div id="pairing-card">
+        <img id="pairing-qr" alt="QR code for CrossPointer controller pairing">
+        <div>
+          <p>Scan this code from a phone on the same Wi-Fi network, then approve the device below.</p>
+          <p id="pairing-url">Starting local server…</p>
+          <div id="pending-list" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
     <section aria-labelledby="laser-heading">
       <h2 id="laser-heading">Laser overlay</h2>
       <div class="controls">
@@ -172,6 +189,9 @@
   <script>
     (() => {
       const api = window.crossPointerProof;
+      const pairingUrl = document.getElementById('pairing-url');
+      const pairingQr = document.getElementById('pairing-qr');
+      const pendingList = document.getElementById('pending-list');
       const toggle = document.getElementById('toggle');
       const size = document.getElementById('size');
       const dotSpacing = document.getElementById('dot-spacing');
@@ -186,6 +206,24 @@
       };
       let on = true;
       let logEntries = [];
+      let pending = [];
+
+      function renderPending() {
+        pendingList.innerHTML = pending.length === 0
+          ? '<p>No connected controller devices.</p>'
+          : pending.map((device) => device.state === 'pending'
+            ? `<div class="pending"><span>New Controller Device connected.</span><span><button data-approve="${device.id}" type="button">Approve</button><button data-deny="${device.id}" class="danger" type="button">Deny</button></span></div>`
+            : `<div class="pending"><span>Authorized controller device</span><button data-revoke="${device.id}" class="danger" type="button">Revoke / Disconnect device</button></div>`).join('');
+        pendingList.querySelectorAll('[data-approve]').forEach((button) => {
+          button.addEventListener('click', () => api.approvePairing(button.dataset.approve));
+        });
+        pendingList.querySelectorAll('[data-deny]').forEach((button) => {
+          button.addEventListener('click', () => api.denyPairing(button.dataset.deny));
+        });
+        pendingList.querySelectorAll('[data-revoke]').forEach((button) => {
+          button.addEventListener('click', () => api.revokePairing(button.dataset.revoke));
+        });
+      }
 
       function log(message) {
         logEntries = [`${new Date().toLocaleTimeString()} ${message}`, ...logEntries].slice(0, 8);
@@ -264,6 +302,15 @@
         run('Emergency stop', api.emergencyHide());
       });
 
+      api.getPairingInfo().then((info) => {
+        pairingUrl.textContent = info.url;
+        pairingQr.src = info.qrDataUrl;
+      }).catch((error) => log(`Pairing server: ${error.message}`));
+      api.onPairingPending((nextPending) => {
+        pending = nextPending;
+        renderPending();
+      });
+      renderPending();
       run('Capability query', api.getCapabilities().then(renderCapabilities));
       sendConfig();
     })();

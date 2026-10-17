@@ -12,10 +12,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @crosspointer/protocol && npm run build --workspace @crosspointer/controller-ui",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build -w @crosspointer/protocol && npm run typecheck --workspaces --if-present",
     "start": "electron apps/desktop/main.js",
     "desktop:start": "electron apps/desktop/main.js",
     "desktop:dev": "electron apps/desktop/main.js --dev"

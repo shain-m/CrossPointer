@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "koffi": "^3.3.3"
+    "@crosspointer/protocol": "^0.1.0",
+    "koffi": "^3.3.3",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
   }
 }

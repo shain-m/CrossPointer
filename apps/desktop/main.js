@@ -1,10 +1,13 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const windowsInput = require('./windows-input');
+const { createLocalServer } = require('./local-server');
 
 const isWindows = process.platform === 'win32';
 let dashboardWindow;
 let overlayWindow;
+let localServer;
+let localServerInfo;
 
 function assertWindows() {
   if (!isWindows) {
@@ -48,6 +51,77 @@ function hideLaserAndReleaseInputs() {
   if (isWindows) {
     windowsInput.releaseAllHeldInputs();
   }
+}
+
+function sendDashboardEvent(channel, payload) {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.webContents.send(channel, payload);
+  }
+}
+
+function handleControllerMessage(message) {
+  if (message.type === 'trackpad.move') {
+    assertWindows();
+    windowsInput.moveRelative(message.payload.deltaX, message.payload.deltaY);
+  } else if (message.type === 'trackpad.click') {
+    assertWindows();
+    windowsInput.click(message.payload.button);
+  } else if (message.type === 'trackpad.button-down') {
+    assertWindows();
+    windowsInput.buttonDown(message.payload.button);
+  } else if (message.type === 'trackpad.button-up') {
+    assertWindows();
+    windowsInput.buttonUp(message.payload.button);
+  } else if (message.type === 'trackpad.scroll') {
+    assertWindows();
+    windowsInput.scroll(message.payload.deltaX, message.payload.deltaY);
+  } else if (message.type === 'presentation.action') {
+    assertWindows();
+    windowsInput.pressPresentationAction(message.payload.action);
+  } else if (message.type === 'laser.position') {
+    const { bounds } = screen.getPrimaryDisplay();
+    overlayWindow.webContents.send('laser:set-position', message.payload.x * bounds.width, message.payload.y * bounds.height);
+  } else if (message.type === 'laser.toggle') {
+    if (message.payload.enabled) overlayWindow.showInactive();
+    else overlayWindow.hide();
+    overlayWindow.webContents.send('laser:toggle', message.payload.enabled);
+  } else if (message.type === 'laser.config') {
+    const config = {
+      on: message.payload.enabled,
+      size: message.payload.size,
+      dotSpacing: message.payload.dotSpacing,
+      popSpeed: message.payload.popSpeed,
+    };
+    if (config.on) overlayWindow.showInactive();
+    else overlayWindow.hide();
+    overlayWindow.webContents.send('laser:update-config', config);
+  } else if (message.type === 'laser') {
+    if (message.payload.command === 'enable') {
+      if (message.payload.enabled) overlayWindow.showInactive();
+      else overlayWindow.hide();
+      overlayWindow.webContents.send('laser:toggle', message.payload.enabled);
+    } else if (message.payload.command === 'position') {
+      const { bounds } = screen.getPrimaryDisplay();
+      overlayWindow.webContents.send('laser:set-position', message.payload.x * bounds.width, message.payload.y * bounds.height);
+    } else {
+      overlayWindow.webContents.send('laser:update-config', {
+        on: true,
+        size: message.payload.size,
+        dotSpacing: message.payload.dotSpacing,
+        popSpeed: message.payload.popSpeed,
+      });
+    }
+  }
+}
+
+function createLocalTransport() {
+  localServer = createLocalServer({
+    staticDirectory: path.join(__dirname, '..', 'controller-ui', 'out'),
+    onMessage: handleControllerMessage,
+    onPendingChange: (pending) => sendDashboardEvent('pairing:pending', pending),
+    onDisconnect: () => hideLaserAndReleaseInputs(),
+  });
+  return localServer.start();
 }
 
 function createDashboard() {
@@ -96,6 +170,10 @@ function createOverlay() {
 }
 
 function registerIpc() {
+  ipcMain.handle('pairing:get-info', () => localServerInfo);
+  ipcMain.handle('pairing:approve', (_event, clientId) => localServer.approve(clientId));
+  ipcMain.handle('pairing:deny', (_event, clientId) => localServer.deny(clientId));
+  ipcMain.handle('pairing:revoke', (_event, clientId) => localServer.revoke(clientId));
   ipcMain.handle('input:move-relative', (_event, deltaX, deltaY) => {
     const x = integerInRange(deltaX, -32767, 32767, 'deltaX');
     const y = integerInRange(deltaY, -32767, 32767, 'deltaY');
@@ -195,7 +273,8 @@ function registerIpc() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  localServerInfo = await createLocalTransport();
   createDashboard();
   createOverlay();
   registerIpc();
@@ -209,6 +288,9 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   hideLaserAndReleaseInputs();
+  if (localServer) {
+    localServer.close().catch((error) => console.error(`Unable to close local server: ${error.message}`));
+  }
   if (isWindows) {
     globalShortcut.unregisterAll();
   }

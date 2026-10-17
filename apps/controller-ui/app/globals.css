@@ -84,6 +84,10 @@ h1 { margin: 0; font-size: clamp(2rem, 8vw, 3.4rem); letter-spacing: -0.06em; }
   color: var(--muted); font-size: 0.82rem; font-weight: 700;
 }
 .laser-dot { width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); box-shadow: inset 0 0 0 10px var(--surface); }
+.laser-dot { border: 0; cursor: pointer; }
+.laser-dot.enabled { background: var(--accent); }
+.presentation-shortcuts { display: flex; gap: 8px; }
+.presentation-shortcuts button { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 6px 9px; cursor: pointer; }
 .bottom-bar { color: var(--muted); font-size: 0.78rem; }
 .bottom-bar button { border: 0; background: transparent; cursor: pointer; font-weight: 700; }
 

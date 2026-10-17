@@ -47,6 +47,15 @@ function validateLaserConfig(config) {
 }
 
 contextBridge.exposeInMainWorld('crossPointerProof', {
+  getPairingInfo: () => ipcRenderer.invoke('pairing:get-info'),
+  approvePairing: (clientId) => ipcRenderer.invoke('pairing:approve', clientId),
+  denyPairing: (clientId) => ipcRenderer.invoke('pairing:deny', clientId),
+  revokePairing: (clientId) => ipcRenderer.invoke('pairing:revoke', clientId),
+  onPairingPending: (callback) => {
+    const listener = (_event, pending) => callback(pending);
+    ipcRenderer.on('pairing:pending', listener);
+    return () => ipcRenderer.removeListener('pairing:pending', listener);
+  },
   moveRelative: (deltaX, deltaY) => ipcRenderer.invoke(
     'input:move-relative',
     integerInRange(deltaX, -32767, 32767, 'deltaX'),
