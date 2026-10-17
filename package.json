@@ -1,0 +1,37 @@
+{
+  "name": "crosspointer",
+  "version": "0.1.0-alpha.0",
+  "description": "Turn your phone into a wireless trackpad and presentation laser pointer for your computer. Local-first, private, and account-free.",
+  "main": "index.js",
+  "private": true,
+  "directories": {
+    "doc": "docs"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "start": "electron apps/desktop/main.js",
+    "desktop:start": "electron apps/desktop/main.js",
+    "desktop:dev": "electron apps/desktop/main.js --dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shain-m/CrossPointer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^38.3.0"
+  },
+  "bugs": {
+    "url": "https://github.com/shain-m/CrossPointer/issues"
+  },
+  "homepage": "https://github.com/shain-m/CrossPointer#readme"
+}

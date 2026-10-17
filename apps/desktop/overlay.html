@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrossPointer laser overlay</title>
+  <style>
+    html, body, #cv {
+      width: 100%;
+      height: 100%;
+    }
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    #cv {
+      display: block;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="cv"></canvas>
+  <script>
+    (() => {
+      const canvas = document.getElementById('cv');
+      const ctx = canvas.getContext('2d');
+      let width = 1;
+      let height = 1;
+      let devicePixelRatio = window.devicePixelRatio || 1;
+      let tx = 0;
+      let ty = 0;
+      let x = 0;
+      let y = 0;
+      let hasPosition = false;
+      let on = false;
+      let level = 0;
+      let kick = 0;
+      let size = 85;
+      let dotSpacing = 9;
+      let popSpeed = 1.2;
+      const startedAt = performance.now();
+
+      function fit() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        devicePixelRatio = window.devicePixelRatio || 1;
+        canvas.width = Math.round(width * devicePixelRatio);
+        canvas.height = Math.round(height * devicePixelRatio);
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        if (!hasPosition) {
+          tx = width / 2;
+          ty = height / 2;
+          x = tx;
+          y = ty;
+        }
+      }
+
+      function drawLaser(ctx, x, y, t, R, gap, speed, level, kick) {
+        R = R * (0.6 + 0.4 * level);
+        const rings = Math.floor(R / gap);
+        ctx.fillStyle = '#E24B4A';
+        for (let i = 0; i <= rings; i += 1) {
+          const r0 = i * gap;
+          const u = r0 / R;
+          const fall = Math.pow(Math.max(0, 1 - u), 1.5);
+          const wave = Math.sin(t * speed * 3 - i * 0.7);
+          const r = r0 + (i > 0 ? wave * gap * 0.18 * (speed > 0 ? 1 : 0) : 0) + kick * gap * 0.5 * u;
+          if (i === 0) {
+            ctx.globalAlpha = level;
+            ctx.beginPath();
+            ctx.arc(x, y, gap * 0.7 * (1 + 0.12 * wave * (speed > 0 ? 1 : 0) + kick * 0.4), 0, 6.2832);
+            ctx.fill();
+            continue;
+          }
+          const n = Math.max(6, Math.round(6.2832 * r0 / gap));
+          const rad = Math.max(0.8, gap * 0.42 * (0.3 + 0.7 * fall) * (1 + 0.3 * wave * (speed > 0 ? 1 : 0) + kick * 0.5 * (1 - u)));
+          const alpha = level * Math.pow(Math.max(0, 1 - u), 1.2);
+          const rot = (i % 2 ? 1 : -1) * t * 0.15 * speed + i * 0.5;
+          ctx.globalAlpha = alpha;
+          for (let k = 0; k < n; k += 1) {
+            const a = rot + k * 6.2832 / n;
+            ctx.beginPath();
+            ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r, rad, 0, 6.2832);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      window.crossPointerOverlay.onPosition((nextX, nextY) => {
+        tx = nextX;
+        ty = nextY;
+        hasPosition = true;
+      });
+      window.crossPointerOverlay.onToggle((nextOn) => {
+        on = nextOn;
+      });
+      window.crossPointerOverlay.onConfig((config) => {
+        on = config.on;
+        size = config.size;
+        dotSpacing = config.dotSpacing;
+        popSpeed = config.popSpeed;
+      });
+      window.crossPointerOverlay.onKick(() => {
+        kick = 1;
+      });
+
+      function frame(now) {
+        const t = (now - startedAt) / 1000;
+        x += (tx - x) * 0.25;
+        y += (ty - y) * 0.25;
+        level += ((on ? 1 : 0) - level) * 0.15;
+        kick *= 0.92;
+        ctx.clearRect(0, 0, width, height);
+        if (level > 0.01) {
+          drawLaser(ctx, x, y, t, size, dotSpacing, popSpeed, level, kick);
+        }
+        window.requestAnimationFrame(frame);
+      }
+
+      fit();
+      window.addEventListener('resize', fit);
+      window.requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

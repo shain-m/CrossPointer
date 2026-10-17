@@ -1,0 +1,8 @@
+{
+  "name": "@crosspointer/desktop-proof",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "koffi": "^3.3.3"
+  }
+}

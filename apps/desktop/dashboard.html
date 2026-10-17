@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrossPointer Windows proof</title>
+  <style>
+    :root {
+      --page: #f5f5f3;
+      --surface: #fff;
+      --border: #d8d8d4;
+      --border-strong: #b9b9b3;
+      --text: #1d1d1b;
+      --text-quiet: #5f5f5a;
+      --accent: #e24b4a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--page);
+      color: var(--text);
+      font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    .controls {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 0 0 12px;
+    }
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-quiet);
+    }
+    .controls output { min-width: 30px; color: var(--text); }
+    button {
+      font: inherit;
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid #378add;
+      outline-offset: 2px;
+    }
+    #trackpad {
+      position: relative;
+      height: 260px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    #trackpad::before, #trackpad::after {
+      position: absolute;
+      color: var(--text-quiet);
+      pointer-events: none;
+    }
+    #trackpad::before {
+      content: "Laser test pad";
+      top: 18px;
+      left: 20px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    #trackpad::after {
+      content: "Move here to aim · click to trigger a pop";
+      left: 20px;
+      bottom: 18px;
+    }
+    #status { min-height: 1.4em; color: var(--text-quiet); }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Windows host proof</h1>
+    <div class="controls">
+      <button id="toggle" type="button">Pointer Off</button>
+      <label>Laser Size
+        <input id="size" type="range" min="40" max="130" value="85" step="1">
+        <output id="size-value">85</output>
+      </label>
+      <label>Dot Spacing
+        <input id="dot-spacing" type="range" min="6" max="16" value="9" step="1">
+        <output id="dot-spacing-value">9</output>
+      </label>
+      <label>Pop Speed
+        <input id="pop-speed" type="range" min="0" max="3" value="1.2" step="0.1">
+        <output id="pop-speed-value">1.2</output>
+      </label>
+      <button id="kick" type="button">Trigger Pop/Kick</button>
+    </div>
+    <div id="trackpad" role="application" aria-label="Laser test pad"></div>
+    <p id="status" role="status"></p>
+  </main>
+  <script>
+    (() => {
+      const api = window.crossPointerProof;
+      const toggle = document.getElementById('toggle');
+      const size = document.getElementById('size');
+      const dotSpacing = document.getElementById('dot-spacing');
+      const popSpeed = document.getElementById('pop-speed');
+      const trackpad = document.getElementById('trackpad');
+      const status = document.getElementById('status');
+      const values = {
+        size: document.getElementById('size-value'),
+        dotSpacing: document.getElementById('dot-spacing-value'),
+        popSpeed: document.getElementById('pop-speed-value'),
+      };
+      let on = true;
+
+      function config() {
+        return {
+          on,
+          size: Number(size.value),
+          dotSpacing: Number(dotSpacing.value),
+          popSpeed: Number(popSpeed.value),
+        };
+      }
+
+      function sendConfig() {
+        const nextConfig = config();
+        values.size.value = nextConfig.size;
+        values.dotSpacing.value = nextConfig.dotSpacing;
+        values.popSpeed.value = nextConfig.popSpeed.toFixed(1);
+        api.updateLaserConfig(nextConfig)
+          .then(() => { status.textContent = 'Laser configuration updated.'; })
+          .catch((error) => { status.textContent = error.message; });
+      }
+
+      function sendPosition(event) {
+        const rect = trackpad.getBoundingClientRect();
+        const localX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+        const localY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+        const screenX = (window.screen.availLeft || 0) + window.screen.width * localX / rect.width;
+        const screenY = (window.screen.availTop || 0) + window.screen.height * localY / rect.height;
+        api.setOverlayPosition(screenX, screenY)
+          .catch((error) => { status.textContent = error.message; });
+      }
+
+      toggle.addEventListener('click', () => {
+        on = !on;
+        toggle.textContent = on ? 'Pointer On' : 'Pointer Off';
+        sendConfig();
+      });
+      [size, dotSpacing, popSpeed].forEach((control) => {
+        control.addEventListener('input', sendConfig);
+      });
+      trackpad.addEventListener('pointermove', sendPosition);
+      trackpad.addEventListener('pointerdown', (event) => {
+        sendPosition(event);
+        api.kickLaser()
+          .then(() => { status.textContent = 'Laser pop triggered.'; })
+          .catch((error) => { status.textContent = error.message; });
+      });
+      document.getElementById('kick').addEventListener('click', () => {
+        api.kickLaser()
+          .then(() => { status.textContent = 'Laser pop triggered.'; })
+          .catch((error) => { status.textContent = error.message; });
+      });
+
+      sendConfig();
+    })();
+  </script>
+</body>
+</html>
