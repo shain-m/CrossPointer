@@ -1,21 +1,35 @@
 # CrossPointer
 
-Turn your phone into a wireless trackpad and presentation laser pointer for your computer. Local-first, private, and account-free.
+CrossPointer is a local-first, private, account-free trackpad and presentation laser
+controller. The phone controls the computer; the app does not capture or read the host
+screen.
 
-## Milestone 0 Windows proof
+## Development
 
-This repository currently contains only the Windows Electron feasibility spike. It opens
-a dashboard and a separate transparent, click-through laser overlay. The dashboard can
-send relative cursor movement, clicks, and scroll through the Windows `SendInput` API
-using a direct `koffi` binding, without spawning PowerShell for each event.
-
-Requirements: Windows, Node.js 20+, and npm. Run:
+Requirements: Node.js 20+ and npm. Install and verify the monorepo with:
 
 ```text
-npm install
-npm start
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-Use a safe target while testing the input buttons. Click **Show laser**, then use
-**Move laser marker**. The overlay is intentionally a proof only: it has no network
-transport, pairing, cleanup state machine, or production packaging.
+Milestone 1 includes:
+
+- `packages/protocol`: versioned, runtime-validated command schemas;
+- `apps/controller-ui`: a static-export Next.js controller screen;
+- `apps/desktop`: the Windows Electron input and dotted laser overlay proof.
+
+The exported controller UI is written to `apps/controller-ui/out/`. To view it locally
+after building, run a static file server from that directory, for example:
+
+```text
+npx serve apps/controller-ui/out
+```
+
+Then open the displayed local URL in a browser. The desktop proof remains Windows-only
+because its native input adapter uses `user32.dll` through `koffi`.
+
+Network transport, pairing, and QR flows are intentionally not implemented yet.
