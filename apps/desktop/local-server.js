@@ -73,17 +73,18 @@ function createLocalServer({ staticDirectory, onMessage, onPendingChange, onDisc
       disconnect(client);
       return;
     }
-    const now = Date.now();
-    client.rateWindow = client.rateWindow.filter((timestamp) => now - timestamp < 1000);
-    client.rateWindow.push(now);
-    if (client.rateWindow.length > MAX_MESSAGES_PER_SECOND) {
-      disconnect(client);
-      return;
-    }
     let input;
     try {
       input = JSON.parse(raw.toString());
       const message = protocol.parseMessage(input);
+      const now = Date.now();
+      client.rateWindow = client.rateWindow.filter((timestamp) => now - timestamp < 1000);
+      if (client.rateWindow.length >= MAX_MESSAGES_PER_SECOND) {
+        if (message.type === 'trackpad.scroll' || message.type === 'trackpad.move') return;
+        disconnect(client);
+        return;
+      }
+      client.rateWindow.push(now);
       if (message.sequence <= client.lastSequence) return;
       client.lastSequence = message.sequence;
       onMessage(message, client);

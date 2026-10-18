@@ -69,12 +69,14 @@ function GridCanvas({
     let frame = 0;
 
     const resize = () => {
-      const bounds = containerRef.current?.getBoundingClientRect();
-      if (!bounds) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const bounds = container.getBoundingClientRect();
       const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.round(bounds.width * ratio);
-      canvas.height = Math.round(bounds.height * ratio);
+      canvas.width = Math.round(container.clientWidth * ratio);
+      canvas.height = Math.round(container.clientHeight * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, bounds.width, bounds.height);
     };
 
     const render = () => {
@@ -108,11 +110,13 @@ function GridCanvas({
 
     resize();
     window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
     const observer = containerRef.current ? new ResizeObserver(resize) : null;
     if (observer && containerRef.current) observer.observe(containerRef.current);
     frame = window.requestAnimationFrame(render);
     return () => {
       window.removeEventListener('resize', resize);
+      window.removeEventListener('orientationchange', resize);
       observer?.disconnect();
       window.cancelAnimationFrame(frame);
     };
@@ -165,6 +169,8 @@ export default function ControllerPage() {
   const activePointers = useRef(new Map<number, Point>());
   const pendingMove = useRef<Point>({ x: 0, y: 0 });
   const moveFrame = useRef<number | null>(null);
+  const pendingScroll = useRef<Point>({ x: 0, y: 0 });
+  const scrollFrame = useRef<number | null>(null);
   const laserLastPoint = useRef<Point | null>(null);
   const laserPosition = useRef<Point | null>(null);
   const laserFrame = useRef<number | null>(null);
@@ -188,6 +194,20 @@ export default function ControllerPage() {
     pendingMove.current.x += deltaX;
     pendingMove.current.y += deltaY;
     if (moveFrame.current === null) moveFrame.current = requestAnimationFrame(flushMove);
+  };
+
+  const flushScroll = () => {
+    scrollFrame.current = null;
+    const deltaX = Math.max(-1200, Math.min(1200, Math.round(pendingScroll.current.x)));
+    const deltaY = Math.max(-1200, Math.min(1200, Math.round(pendingScroll.current.y)));
+    pendingScroll.current = { x: 0, y: 0 };
+    if (deltaX || deltaY) send({ type: 'trackpad.scroll', payload: { deltaX, deltaY } });
+  };
+
+  const queueScroll = (rawDx: number, rawDy: number) => {
+    pendingScroll.current.x += rawDx;
+    pendingScroll.current.y += rawDy;
+    if (scrollFrame.current === null) scrollFrame.current = requestAnimationFrame(flushScroll);
   };
 
   const getTargetBounds = () => {
@@ -243,6 +263,7 @@ export default function ControllerPage() {
     return () => {
       window.removeEventListener('blur', cancelInput);
       if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current);
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
       if (laserFrame.current !== null) cancelAnimationFrame(laserFrame.current);
       unsubscribe();
       unsubscribeDisplays();
@@ -260,20 +281,23 @@ export default function ControllerPage() {
   }, [connectionState]);
 
   const handleTrackpadDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
     activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
   };
 
   const handleTrackpadMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
     const previous = activePointers.current.get(event.pointerId);
     if (!previous) return;
     const rawDx = event.clientX - previous.x;
     const rawDy = event.clientY - previous.y;
     activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (activePointers.current.size === 1) queueMove(rawDx, rawDy);
-    else send({ type: 'trackpad.scroll', payload: { deltaX: Math.round(rawDx), deltaY: Math.round(rawDy) } });
+    else queueScroll(rawDx, rawDy);
   };
 
   const handleTrackpadEnd = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
     activePointers.current.delete(event.pointerId);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
@@ -349,7 +373,7 @@ export default function ControllerPage() {
       <aside className={`settings-drawer ${settingsOpen ? 'open' : ''}`}>
         <div className="drawer-heading"><strong>Controller settings</strong><button onClick={() => setSettingsOpen(false)} type="button">×</button></div>
         <div className="connection-details"><span>Host</span><strong>{hostLabel}</strong><span>Link</span><strong>{connectionLabels[connectionState]}</strong></div>
-        <label>Pointer sensitivity <output>{sensitivity.toFixed(1)}×</output><input type="range" min="0.5" max="2" step="0.1" value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} /></label>
+        <label>Pointer sensitivity <output>{sensitivity.toFixed(1)}×</output><input type="range" min="0.5" max="4" step="0.1" value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} /></label>
         <label>Laser display
           <select value={displayTarget} onChange={(event) => {
             const value = event.target.value;

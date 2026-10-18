@@ -35,8 +35,8 @@ function validateLaserConfig(config) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('config must be an object.');
   }
-  if (typeof config.on !== 'boolean') {
-    throw new Error('on must be a boolean.');
+  if (config.on !== undefined && typeof config.on !== 'boolean') {
+    throw new Error('on must be a boolean when provided.');
   }
   return {
     on: config.on,

@@ -355,16 +355,13 @@ function registerIpc() {
     }
     const validatedConfig = {
       on: config.on,
-      size: numberInRange(config.size, 40, 130, 'size'),
-      dotSpacing: numberInRange(config.dotSpacing, 6, 16, 'dotSpacing'),
-      popSpeed: numberInRange(config.popSpeed, 0, 3, 'popSpeed'),
+      size: config.size === undefined ? undefined : numberInRange(config.size, 40, 130, 'size'),
+      dotSpacing: config.dotSpacing === undefined ? undefined : numberInRange(config.dotSpacing, 6, 16, 'dotSpacing'),
+      popSpeed: config.popSpeed === undefined ? undefined : numberInRange(config.popSpeed, 0, 3, 'popSpeed'),
     };
-    if (typeof validatedConfig.on !== 'boolean') {
-      throw new Error('on must be a boolean.');
-    }
-    if (validatedConfig.on) {
+    if (validatedConfig.on === true) {
       overlayWindow.showInactive();
-    } else {
+    } else if (validatedConfig.on === false) {
       overlayWindow.hide();
     }
     overlayWindow.webContents.send('laser:update-config', validatedConfig);

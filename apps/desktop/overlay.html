@@ -98,10 +98,10 @@
         on = nextOn;
       });
       window.crossPointerOverlay.onConfig((config) => {
-        on = config.on;
-        size = config.size;
-        dotSpacing = config.dotSpacing;
-        popSpeed = config.popSpeed;
+        if (config.on !== undefined) on = config.on;
+        if (config.size !== undefined) size = config.size;
+        if (config.dotSpacing !== undefined) dotSpacing = config.dotSpacing;
+        if (config.popSpeed !== undefined) popSpeed = config.popSpeed;
       });
       window.crossPointerOverlay.onKick(() => {
         kick = 1;

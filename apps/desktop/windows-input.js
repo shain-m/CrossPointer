@@ -177,11 +177,13 @@ function createWindowsHostInputAdapter() {
   function scroll(deltaX, deltaY) {
     validateInteger(deltaX, MIN_WHEEL_DELTA, MAX_WHEEL_DELTA, 'deltaX');
     validateInteger(deltaY, MIN_WHEEL_DELTA, MAX_WHEEL_DELTA, 'deltaY');
-    if (deltaX !== 0) {
-      sendMouse(0, 0, deltaX < 0 ? 0x100000000 + deltaX : deltaX, MOUSEEVENTF_HWHEEL);
+    const normalizedX = Math.max(MIN_WHEEL_DELTA, Math.min(MAX_WHEEL_DELTA, Math.trunc(deltaX)));
+    const normalizedY = Math.max(MIN_WHEEL_DELTA, Math.min(MAX_WHEEL_DELTA, Math.trunc(deltaY)));
+    if (normalizedX !== 0) {
+      sendMouse(0, 0, normalizedX < 0 ? 0x100000000 + normalizedX : normalizedX, MOUSEEVENTF_HWHEEL);
     }
-    if (deltaY !== 0) {
-      sendMouse(0, 0, deltaY < 0 ? 0x100000000 + deltaY : deltaY, MOUSEEVENTF_WHEEL);
+    if (normalizedY !== 0) {
+      sendMouse(0, 0, normalizedY < 0 ? 0x100000000 + normalizedY : normalizedY, MOUSEEVENTF_WHEEL);
     }
   }
 
