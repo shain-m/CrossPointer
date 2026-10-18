@@ -8,6 +8,48 @@ let dashboardWindow;
 let overlayWindow;
 let localServer;
 let localServerInfo;
+let activeDisplayTarget = 'auto';
+
+function getVirtualDesktopBounds() {
+  const displays = screen.getAllDisplays();
+  const minX = Math.min(...displays.map((display) => display.bounds.x));
+  const minY = Math.min(...displays.map((display) => display.bounds.y));
+  const maxX = Math.max(...displays.map((display) => display.bounds.x + display.bounds.width));
+  const maxY = Math.max(...displays.map((display) => display.bounds.y + display.bounds.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function getDisplayInfo() {
+  return {
+    displays: screen.getAllDisplays().map((display, index) => ({
+      id: display.id,
+      label: `Display ${index + 1} (${display.bounds.width}x${display.bounds.height})`,
+      bounds: display.bounds,
+      scaleFactor: display.scaleFactor,
+      isPrimary: display.id === screen.getPrimaryDisplay().id,
+    })),
+    virtualBounds: getVirtualDesktopBounds(),
+  };
+}
+
+function getDisplayById(displayId) {
+  return screen.getAllDisplays().find((display) => display.id === displayId);
+}
+
+function setOverlayBounds(bounds) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayWindow.setBounds(bounds);
+  overlayWindow.webContents.send('display-changed');
+}
+
+function getAutoDisplay(globalX, globalY) {
+  return screen.getAllDisplays().find((display) => (
+    globalX >= display.bounds.x
+    && globalX < display.bounds.x + display.bounds.width
+    && globalY >= display.bounds.y
+    && globalY < display.bounds.y + display.bounds.height
+  )) || screen.getPrimaryDisplay();
+}
 
 function assertWindows() {
   if (!isWindows) {
@@ -78,9 +120,49 @@ function handleControllerMessage(message) {
   } else if (message.type === 'presentation.action') {
     assertWindows();
     windowsInput.pressPresentationAction(message.payload.action);
+  } else if (message.type === 'host:set-target-display') {
+    activeDisplayTarget = message.payload.displayId;
+    const target = activeDisplayTarget === 'auto'
+      ? getAutoDisplay(screen.getCursorScreenPoint().x, screen.getCursorScreenPoint().y)
+      : getDisplayById(activeDisplayTarget);
+    if (target) setOverlayBounds(target.bounds);
   } else if (message.type === 'laser.position') {
-    const { bounds } = screen.getPrimaryDisplay();
-    overlayWindow.webContents.send('laser:set-position', message.payload.x * bounds.width, message.payload.y * bounds.height);
+    const { virtualBounds } = getDisplayInfo();
+    const requestedTarget = message.payload.displayId || activeDisplayTarget;
+    if (requestedTarget !== activeDisplayTarget) activeDisplayTarget = requestedTarget;
+    if (activeDisplayTarget === 'auto') {
+      const globalX = virtualBounds.x + message.payload.x * virtualBounds.width;
+      const globalY = virtualBounds.y + message.payload.y * virtualBounds.height;
+      const target = getAutoDisplay(globalX, globalY);
+      if (!overlayWindow.isDestroyed()) {
+        const currentBounds = overlayWindow.getBounds();
+        if (currentBounds.x !== target.bounds.x
+          || currentBounds.y !== target.bounds.y
+          || currentBounds.width !== target.bounds.width
+          || currentBounds.height !== target.bounds.height) {
+          setOverlayBounds(target.bounds);
+        }
+      }
+      overlayWindow.webContents.send(
+        'laser:set-position',
+        globalX - target.bounds.x,
+        globalY - target.bounds.y,
+      );
+      return;
+    }
+    const target = getDisplayById(activeDisplayTarget) || screen.getPrimaryDisplay();
+    const currentBounds = overlayWindow.getBounds();
+    if (currentBounds.x !== target.bounds.x
+      || currentBounds.y !== target.bounds.y
+      || currentBounds.width !== target.bounds.width
+      || currentBounds.height !== target.bounds.height) {
+      setOverlayBounds(target.bounds);
+    }
+    overlayWindow.webContents.send(
+      'laser:set-position',
+      Math.max(0, Math.min(target.bounds.width, message.payload.x * target.bounds.width)),
+      Math.max(0, Math.min(target.bounds.height, message.payload.y * target.bounds.height)),
+    );
   } else if (message.type === 'laser.toggle') {
     if (message.payload.enabled) overlayWindow.showInactive();
     else overlayWindow.hide();
@@ -105,7 +187,7 @@ function handleControllerMessage(message) {
       overlayWindow.webContents.send('laser:set-position', message.payload.x * bounds.width, message.payload.y * bounds.height);
     } else {
       overlayWindow.webContents.send('laser:update-config', {
-        on: true,
+        on: false,
         size: message.payload.size,
         dotSpacing: message.payload.dotSpacing,
         popSpeed: message.payload.popSpeed,
@@ -120,6 +202,7 @@ function createLocalTransport() {
     onMessage: handleControllerMessage,
     onPendingChange: (pending) => sendDashboardEvent('pairing:pending', pending),
     onDisconnect: () => hideLaserAndReleaseInputs(),
+    getDisplayInfo,
   });
   return localServer.start();
 }
@@ -142,7 +225,7 @@ function createDashboard() {
 }
 
 function createOverlay() {
-  const { bounds } = screen.getPrimaryDisplay();
+  const bounds = getVirtualDesktopBounds();
   overlayWindow = new BrowserWindow({
     x: bounds.x,
     y: bounds.y,
@@ -164,9 +247,27 @@ function createOverlay() {
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
   overlayWindow.loadFile(path.join(__dirname, 'overlay.html'));
+  overlayWindow.webContents.once('did-finish-load', () => {
+    overlayWindow.webContents.send('laser:toggle', false);
+    overlayWindow.webContents.send('laser:update-config', {
+      on: false,
+      size: 85,
+      dotSpacing: 9,
+      popSpeed: 1.2,
+    });
+  });
   overlayWindow.on('closed', () => {
     overlayWindow = undefined;
   });
+}
+
+function resizeOverlayToVirtualDesktop() {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    const target = activeDisplayTarget === 'auto'
+      ? getAutoDisplay(screen.getCursorScreenPoint().x, screen.getCursorScreenPoint().y)
+      : getDisplayById(activeDisplayTarget);
+    setOverlayBounds(target ? target.bounds : getVirtualDesktopBounds());
+  }
 }
 
 function registerIpc() {
@@ -278,6 +379,9 @@ app.whenReady().then(async () => {
   createDashboard();
   createOverlay();
   registerIpc();
+  screen.on('display-added', resizeOverlayToVirtualDesktop);
+  screen.on('display-removed', resizeOverlayToVirtualDesktop);
+  screen.on('display-metrics-changed', resizeOverlayToVirtualDesktop);
   if (isWindows) {
     const registered = globalShortcut.register('CommandOrControl+Shift+H', hideLaserAndReleaseInputs);
     if (!registered) {

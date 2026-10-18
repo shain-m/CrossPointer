@@ -72,6 +72,14 @@ const laserPosition = envelope.extend({
   payload: z.object({
     x: z.number().min(0).max(1),
     y: z.number().min(0).max(1),
+    displayId: z.union([z.number().int().positive(), z.literal('auto')]).optional(),
+  }),
+});
+
+const targetDisplay = envelope.extend({
+  type: z.literal('host:set-target-display'),
+  payload: z.object({
+    displayId: z.union([z.number().int().positive(), z.literal('auto')]),
   }),
 });
 
@@ -93,6 +101,7 @@ export const messageSchema = z.discriminatedUnion('type', [
   presentationAction,
   laserToggle,
   laserPosition,
+  targetDisplay,
   laserConfig,
   laser,
 ]);

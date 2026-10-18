@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('crossPointerOverlay', {
   onKick: (callback) => {
     ipcRenderer.on('laser:kick', callback);
   },
+  onDisplayChanged: (callback) => {
+    ipcRenderer.on('display-changed', callback);
+  },
 });

@@ -11,6 +11,16 @@ const PAIRING_TTL_MS = 2 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_MESSAGE_BYTES = 16 * 1024;
 const MAX_MESSAGES_PER_SECOND = 120;
+const STATIC_CONTENT_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
 
 function getLanAddress() {
   for (const interfaces of Object.values(os.networkInterfaces())) {
@@ -25,7 +35,7 @@ function token() {
   return crypto.randomBytes(18).toString('base64url');
 }
 
-function createLocalServer({ staticDirectory, onMessage, onPendingChange, onDisconnect }) {
+function createLocalServer({ staticDirectory, onMessage, onPendingChange, onDisconnect, getDisplayInfo }) {
   let httpServer;
   let webSocketServer;
   let protocol;
@@ -109,6 +119,7 @@ function createLocalServer({ staticDirectory, onMessage, onPendingChange, onDisc
     client.socket.on('error', () => disconnect(client));
     client.socket.on('message', (raw) => handleMessage(client, raw));
     socket.send(JSON.stringify({ type: 'pairing.pending' }));
+    socket.send(JSON.stringify({ type: 'display.list', payload: getDisplayInfo() }));
     notifyPending();
   }
 
@@ -119,19 +130,23 @@ function createLocalServer({ staticDirectory, onMessage, onPendingChange, onDisc
     pairing = { token: token(), expiresAt: Date.now() + PAIRING_TTL_MS };
 
     httpServer = http.createServer((request, response) => {
-      const requestedPath = new URL(request.url, `http://${host}`).pathname;
+      const requestedPath = new URL(request.url || '/', 'http://localhost').pathname;
       const relativePath = requestedPath === '/' ? 'index.html' : requestedPath.replace(/^\/+/, '');
-      const filePath = path.resolve(staticDirectory, relativePath);
-      if (!filePath.startsWith(path.resolve(staticDirectory) + path.sep)) {
+      const staticRoot = path.resolve(staticDirectory);
+      const filePath = path.resolve(staticRoot, relativePath);
+      if (filePath !== staticRoot && !filePath.startsWith(staticRoot + path.sep)) {
         response.writeHead(403).end('Forbidden');
         return;
       }
       fs.readFile(filePath, (error, data) => {
         if (error) {
-          response.writeHead(error.code === 'ENOENT' ? 404 : 500).end('Not found');
+          response.writeHead(error.code === 'ENOENT' || error.code === 'EISDIR' ? 404 : 500).end('Not found');
           return;
         }
-        response.writeHead(200, { 'Content-Type': filePath.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream' });
+        const extension = path.extname(filePath).toLowerCase();
+        response.writeHead(200, {
+          'Content-Type': STATIC_CONTENT_TYPES[extension] || 'application/octet-stream',
+        });
         response.end(data);
       });
     });

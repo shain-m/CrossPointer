@@ -106,6 +106,10 @@
       window.crossPointerOverlay.onKick(() => {
         kick = 1;
       });
+      window.crossPointerOverlay.onDisplayChanged(() => {
+        fit();
+        ctx.clearRect(0, 0, width, height);
+      });
 
       function frame(now) {
         const t = (now - startedAt) / 1000;

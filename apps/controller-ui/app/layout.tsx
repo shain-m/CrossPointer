@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   description: 'A private, local-first trackpad and presentation controller.',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
