@@ -11,6 +11,8 @@ import {
 type Mode = 'trackpad' | 'presentation';
 type Point = { x: number; y: number };
 type DisplayTarget = number | 'auto';
+type PresentationProfile = 'powerpoint' | 'google-slides' | 'pdf-viewer';
+type LaserMode = 'relative' | 'absolute';
 
 function GearIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.3a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4Zm8.1 3.7c0-.5-.1-1-.2-1.5l1.5-1.1-1.8-3.1-1.8.8c-.8-.7-1.7-1.2-2.7-1.5L14.8 3h-3.6l-.3 2.1c-1 .3-1.9.8-2.7 1.5l-1.8-.8-1.8 3.1 1.5 1.1c-.1.5-.2 1-.2 1.5s.1 1 .2 1.5l-1.5 1.1 1.8 3.1 1.8-.8c.8.7 1.7 1.2 2.7 1.5l.3 2.1h3.6l.3-2.1c1-.3 1.9-.8 2.7-1.5l1.8.8 1.8-3.1-1.5-1.1c.1-.5.2-1 .2-1.5Z"/></svg>;
@@ -165,6 +167,10 @@ export default function ControllerPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [displayLayout, setDisplayLayout] = useState<DisplayLayout | null>(null);
   const [displayTarget, setDisplayTarget] = useState<DisplayTarget>('auto');
+  const [presentationProfile, setPresentationProfile] = useState<PresentationProfile>('powerpoint');
+  const [laserSize, setLaserSize] = useState(85);
+  const [laserDotSpacing, setLaserDotSpacing] = useState(9);
+  const [laserMode, setLaserMode] = useState<LaserMode>('relative');
   const transport = useRef<ControllerTransport>();
   const activePointers = useRef(new Map<number, Point>());
   const pendingMove = useRef<Point>({ x: 0, y: 0 });
@@ -303,12 +309,31 @@ export default function ControllerPage() {
   };
 
   const handleLaserDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (laserMode === 'absolute') {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const bounds = getTargetBounds();
+      laserPosition.current = {
+        x: ((event.clientX - rect.left) / rect.width) * bounds.width,
+        y: ((event.clientY - rect.top) / rect.height) * bounds.height,
+      };
+      flushLaser();
+    }
     laserLastPoint.current = { x: event.clientX, y: event.clientY };
   };
 
   const handleLaserMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!laserLastPoint.current) return;
-    queueLaser(event.clientX - laserLastPoint.current.x, event.clientY - laserLastPoint.current.y);
+    if (laserMode === 'absolute') {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const bounds = getTargetBounds();
+      laserPosition.current = {
+        x: ((event.clientX - rect.left) / rect.width) * bounds.width,
+        y: ((event.clientY - rect.top) / rect.height) * bounds.height,
+      };
+      if (laserFrame.current === null) laserFrame.current = requestAnimationFrame(flushLaser);
+    } else {
+      queueLaser(event.clientX - laserLastPoint.current.x, event.clientY - laserLastPoint.current.y);
+    }
     laserLastPoint.current = { x: event.clientX, y: event.clientY };
   };
 
@@ -353,7 +378,7 @@ export default function ControllerPage() {
           </div>
           <div className="presenter-heading">Presenter Controls <ChevronIcon direction="down" /></div>
           <div className="presenter-dock">
-            <button className="slide-round previous" onClick={() => send({ type: 'presentation.action', payload: { action: 'previous' } })} type="button" aria-label="Previous slide"><ChevronIcon direction="left" /></button>
+            <button className="slide-round previous" onClick={() => send({ type: 'presentation.action', payload: { action: 'previous', profileId: presentationProfile } })} type="button" aria-label="Previous slide"><ChevronIcon direction="left" /></button>
             <div className="center-cluster">
               <button className={`cluster-button laser-button ${laserEnabled ? 'enabled' : ''}`} onClick={() => {
                 const enabled = !laserEnabled;
@@ -361,11 +386,11 @@ export default function ControllerPage() {
                 send({ type: 'laser.toggle', payload: { enabled } });
               }} type="button" aria-label={laserEnabled ? 'Turn laser off' : 'Turn laser on'}><LaserIcon /></button>
               <div className="utility-cluster">
-                <button className="cluster-button utility-button" onClick={() => send({ type: 'presentation.action', payload: { action: 'blank' } })} type="button" aria-label="Blank screen"><MoonIcon /></button>
-                <button className="cluster-button utility-button" onClick={() => send({ type: 'presentation.action', payload: { action: 'start' } })} type="button" aria-label="Start slideshow"><PlayIcon /></button>
+                <button className="cluster-button utility-button" onClick={() => send({ type: 'presentation.action', payload: { action: 'blank', profileId: presentationProfile } })} type="button" aria-label="Blank screen"><MoonIcon /></button>
+                <button className="cluster-button utility-button" onClick={() => send({ type: 'presentation.action', payload: { action: 'start', profileId: presentationProfile } })} type="button" aria-label="Start slideshow"><PlayIcon /></button>
               </div>
             </div>
-            <button className="slide-round next" onClick={() => send({ type: 'presentation.action', payload: { action: 'next' } })} type="button" aria-label="Next slide"><ChevronIcon direction="right" /></button>
+            <button className="slide-round next" onClick={() => send({ type: 'presentation.action', payload: { action: 'next', profileId: presentationProfile } })} type="button" aria-label="Next slide"><ChevronIcon direction="right" /></button>
           </div>
         </section>
       )}
@@ -374,6 +399,37 @@ export default function ControllerPage() {
         <div className="drawer-heading"><strong>Controller settings</strong><button onClick={() => setSettingsOpen(false)} type="button">×</button></div>
         <div className="connection-details"><span>Host</span><strong>{hostLabel}</strong><span>Link</span><strong>{connectionLabels[connectionState]}</strong></div>
         <label>Pointer sensitivity <output>{sensitivity.toFixed(1)}×</output><input type="range" min="0.5" max="4" step="0.1" value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} /></label>
+        <label>Presentation app
+          <select value={presentationProfile} onChange={(event) => {
+            const nextProfile = event.target.value as PresentationProfile;
+            setPresentationProfile(nextProfile);
+            send({ type: 'presentation.profile', payload: { profileId: nextProfile } });
+          }}>
+            <option value="powerpoint">PowerPoint</option>
+            <option value="google-slides">Google Slides</option>
+            <option value="pdf-viewer">PDF Viewer</option>
+          </select>
+        </label>
+        <label>Laser size <output>{laserSize}px</output><input type="range" min="40" max="130" step="1" value={laserSize} onChange={(event) => {
+          const nextSize = Number(event.target.value);
+          setLaserSize(nextSize);
+          send({ type: 'laser:config', payload: { enabled: laserEnabled, size: nextSize, dotSpacing: laserDotSpacing, popSpeed: 1.2, mode: laserMode } });
+        }} /></label>
+        <label>Laser dot spacing <output>{laserDotSpacing}px</output><input type="range" min="6" max="16" step="1" value={laserDotSpacing} onChange={(event) => {
+          const nextSpacing = Number(event.target.value);
+          setLaserDotSpacing(nextSpacing);
+          send({ type: 'laser:config', payload: { enabled: laserEnabled, size: laserSize, dotSpacing: nextSpacing, popSpeed: 1.2, mode: laserMode } });
+        }} /></label>
+        <label>Laser mode
+          <select value={laserMode} onChange={(event) => {
+            const nextMode = event.target.value as LaserMode;
+            setLaserMode(nextMode);
+            send({ type: 'laser:config', payload: { enabled: laserEnabled, size: laserSize, dotSpacing: laserDotSpacing, popSpeed: 1.2, mode: nextMode } });
+          }}>
+            <option value="relative">Relative</option>
+            <option value="absolute">Absolute</option>
+          </select>
+        </label>
         <label>Laser display
           <select value={displayTarget} onChange={(event) => {
             const value = event.target.value;

@@ -9,7 +9,7 @@ const koffi = require('koffi');
  *   buttonUp: (button: MouseButton) => void,
  *   click: (button: MouseButton) => void,
  *   scroll: (deltaX: number, deltaY: number) => void,
- *   pressPresentationAction: (action: PresentationAction) => void,
+ *   pressPresentationAction: (action: PresentationAction, profileId?: string) => void,
  *   releaseAllHeldInputs: () => void,
  *   getCapabilities: () => {
  *     platform: string,
@@ -87,6 +87,8 @@ const INPUT = koffi.struct('CrossPointerINPUT', {
 const SendInput = user32.func(
   'unsigned int __stdcall SendInput(unsigned int cInputs, CrossPointerINPUT *pInputs, int cbSize)',
 );
+const ShowCursor = user32.func('int __stdcall ShowCursor(int bShow)');
+const { getPresentationProfile, presentationProfileIds } = require('./presentation-profiles');
 
 function validateInteger(value, minimum, maximum, name) {
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
@@ -107,6 +109,15 @@ function validatePresentationAction(action) {
     throw new Error('action must be next, previous, start, exit, or blank.');
   }
   return action;
+}
+
+function setNativeCursorVisible(visible) {
+  let result = ShowCursor(visible ? 1 : 0);
+  if (visible) {
+    while (result < 0) result = ShowCursor(1);
+  } else {
+    while (result >= 0) result = ShowCursor(0);
+  }
 }
 
 function sendInput(events) {
@@ -198,9 +209,25 @@ function createWindowsHostInputAdapter() {
     }
   }
 
-  function pressPresentationAction(action) {
+  function pressPresentationAction(action, profileId = 'powerpoint') {
     const validatedAction = validatePresentationAction(action);
-    pressKey(PRESENTATION_KEYS[validatedAction]);
+    const profile = getPresentationProfile(profileId);
+    const chord = profile[validatedAction];
+    if (!chord) throw new Error(`Presentation action ${validatedAction} is not supported by ${profileId}.`);
+    const pressed = [];
+    try {
+      for (const key of chord) {
+        sendInput([createKeyboardEvent(key.key, 0)]);
+        heldKeys.add(key.key);
+        pressed.push(key.key);
+      }
+    } finally {
+      for (let index = pressed.length - 1; index >= 0; index -= 1) {
+        const key = pressed[index];
+        sendInput([createKeyboardEvent(key, KEYEVENTF_KEYUP)]);
+        heldKeys.delete(key);
+      }
+    }
   }
 
   function releaseAllHeldInputs() {
@@ -233,6 +260,7 @@ function createWindowsHostInputAdapter() {
     click,
     scroll,
     pressPresentationAction,
+    setLaserCursorVisible: setNativeCursorVisible,
     releaseAllHeldInputs,
     getCapabilities: () => ({
       platform: 'Windows 10/11',
@@ -240,6 +268,7 @@ function createWindowsHostInputAdapter() {
       absoluteLaser: true,
       presentationKeys: true,
       supportedPresentationActions: Object.keys(PRESENTATION_KEYS),
+      presentationProfiles: presentationProfileIds,
     }),
   };
 }

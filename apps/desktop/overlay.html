@@ -40,6 +40,8 @@
       let size = 85;
       let dotSpacing = 9;
       let popSpeed = 1.2;
+      const trail = [];
+      const MAX_TRAIL_POINTS = 28;
       const startedAt = performance.now();
 
       function fit() {
@@ -113,14 +115,29 @@
 
       function frame(now) {
         const t = (now - startedAt) / 1000;
-        x += (tx - x) * 0.25;
-        y += (ty - y) * 0.25;
+        const smoothing = 1 - Math.pow(0.0001, 1 / 60);
+        x += (tx - x) * smoothing;
+        y += (ty - y) * smoothing;
         level += ((on ? 1 : 0) - level) * 0.15;
         kick *= 0.92;
         ctx.clearRect(0, 0, width, height);
         if (level > 0.01) {
+          trail.push({ x, y, age: 0 });
+          if (trail.length > MAX_TRAIL_POINTS) trail.shift();
+          for (let index = 0; index < trail.length; index += 1) {
+            trail[index].age += 1;
+            const alpha = level * (1 - index / trail.length) * 0.18;
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = '#E24B4A';
+            ctx.beginPath();
+            ctx.arc(trail[index].x, trail[index].y, Math.max(1, dotSpacing * (1 - index / trail.length) * 0.35), 0, 6.2832);
+            ctx.fill();
+          }
           drawLaser(ctx, x, y, t, size, dotSpacing, popSpeed, level, kick);
+        } else {
+          trail.length = 0;
         }
+        ctx.globalAlpha = 1;
         window.requestAnimationFrame(frame);
       }
 

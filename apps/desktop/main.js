@@ -9,6 +9,7 @@ let overlayWindow;
 let localServer;
 let localServerInfo;
 let activeDisplayTarget = 'auto';
+let activePresentationProfile = 'powerpoint';
 
 function getVirtualDesktopBounds() {
   const displays = screen.getAllDisplays();
@@ -82,6 +83,13 @@ function validatePresentationAction(action) {
   if (!['next', 'previous', 'start', 'exit', 'blank'].includes(action)) {
     throw new Error('action must be next, previous, start, exit, or blank.');
   }
+
+  function validatePresentationProfile(profileId) {
+    if (!['powerpoint', 'google-slides', 'pdf-viewer'].includes(profileId)) {
+      throw new Error('Unknown presentation profile.');
+    }
+    return profileId;
+  }
   return action;
 }
 
@@ -91,6 +99,7 @@ function hideLaserAndReleaseInputs() {
     overlayWindow.webContents.send('laser:toggle', false);
   }
   if (isWindows) {
+    windowsInput.setLaserCursorVisible(true);
     windowsInput.releaseAllHeldInputs();
   }
 }
@@ -119,7 +128,9 @@ function handleControllerMessage(message) {
     windowsInput.scroll(message.payload.deltaX, message.payload.deltaY);
   } else if (message.type === 'presentation.action') {
     assertWindows();
-    windowsInput.pressPresentationAction(message.payload.action);
+    windowsInput.pressPresentationAction(message.payload.action, message.payload.profileId || activePresentationProfile);
+  } else if (message.type === 'presentation.profile') {
+    activePresentationProfile = validatePresentationProfile(message.payload.profileId);
   } else if (message.type === 'host:set-target-display') {
     activeDisplayTarget = message.payload.displayId;
     const target = activeDisplayTarget === 'auto'
@@ -164,15 +175,21 @@ function handleControllerMessage(message) {
       Math.max(0, Math.min(target.bounds.height, message.payload.y * target.bounds.height)),
     );
   } else if (message.type === 'laser.toggle') {
-    if (message.payload.enabled) overlayWindow.showInactive();
-    else overlayWindow.hide();
+    if (message.payload.enabled) {
+      overlayWindow.showInactive();
+      if (isWindows) windowsInput.setLaserCursorVisible(false);
+    } else {
+      overlayWindow.hide();
+      if (isWindows) windowsInput.setLaserCursorVisible(true);
+    }
     overlayWindow.webContents.send('laser:toggle', message.payload.enabled);
-  } else if (message.type === 'laser.config') {
+  } else if (message.type === 'laser:config') {
     const config = {
       on: message.payload.enabled,
       size: message.payload.size,
       dotSpacing: message.payload.dotSpacing,
       popSpeed: message.payload.popSpeed,
+      mode: message.payload.mode,
     };
     if (config.on) overlayWindow.showInactive();
     else overlayWindow.hide();
@@ -254,6 +271,7 @@ function createOverlay() {
       size: 85,
       dotSpacing: 9,
       popSpeed: 1.2,
+      mode: 'relative',
     });
   });
   overlayWindow.on('closed', () => {
@@ -302,15 +320,16 @@ function registerIpc() {
     assertWindows();
     windowsInput.scroll(validatedDeltaX, validatedDeltaY);
   });
-  ipcMain.handle('input:presentation-action', (_event, action) => {
+  ipcMain.handle('input:presentation-action', (_event, action, profileId = activePresentationProfile) => {
     const validatedAction = validatePresentationAction(action);
+    const validatedProfile = validatePresentationProfile(profileId);
     assertWindows();
     const restoreDashboard = dashboardWindow && !dashboardWindow.isDestroyed();
     if (restoreDashboard) {
       dashboardWindow.hide();
     }
     try {
-      windowsInput.pressPresentationAction(validatedAction);
+      windowsInput.pressPresentationAction(validatedAction, validatedProfile);
     } finally {
       if (restoreDashboard) {
         dashboardWindow.showInactive();
@@ -331,8 +350,10 @@ function registerIpc() {
     }
     if (visible) {
       overlayWindow.showInactive();
+      if (isWindows) windowsInput.setLaserCursorVisible(false);
     } else {
       overlayWindow.hide();
+      if (isWindows) windowsInput.setLaserCursorVisible(true);
     }
     overlayWindow.webContents.send('laser:toggle', visible);
   });
@@ -361,8 +382,10 @@ function registerIpc() {
     };
     if (validatedConfig.on === true) {
       overlayWindow.showInactive();
+      if (isWindows) windowsInput.setLaserCursorVisible(false);
     } else if (validatedConfig.on === false) {
       overlayWindow.hide();
+      if (isWindows) windowsInput.setLaserCursorVisible(true);
     }
     overlayWindow.webContents.send('laser:update-config', validatedConfig);
   });

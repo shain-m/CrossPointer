@@ -59,6 +59,14 @@ const presentationAction = envelope.extend({
   type: z.literal('presentation.action'),
   payload: z.object({
     action: z.enum(['next', 'previous', 'start', 'exit', 'blank']),
+    profileId: z.enum(['powerpoint', 'google-slides', 'pdf-viewer']).optional(),
+  }),
+});
+
+const presentationProfile = envelope.extend({
+  type: z.literal('presentation.profile'),
+  payload: z.object({
+    profileId: z.enum(['powerpoint', 'google-slides', 'pdf-viewer']),
   }),
 });
 
@@ -84,12 +92,13 @@ const targetDisplay = envelope.extend({
 });
 
 const laserConfig = envelope.extend({
-  type: z.literal('laser.config'),
+  type: z.literal('laser:config'),
   payload: z.object({
     enabled: z.boolean(),
     size: z.number().min(40).max(130),
     dotSpacing: z.number().min(6).max(16),
     popSpeed: z.number().min(0).max(3),
+    mode: z.enum(['relative', 'absolute']),
   }),
 });
 
@@ -99,6 +108,7 @@ export const messageSchema = z.discriminatedUnion('type', [
   trackpadButton,
   trackpadScroll,
   presentationAction,
+  presentationProfile,
   laserToggle,
   laserPosition,
   targetDisplay,
@@ -111,6 +121,7 @@ export type TrackpadMove = z.infer<typeof trackpadMove>;
 export type TrackpadClick = z.infer<typeof trackpadClick>;
 export type TrackpadScroll = z.infer<typeof trackpadScroll>;
 export type PresentationAction = z.infer<typeof presentationAction>;
+export type PresentationProfile = z.infer<typeof presentationProfile>;
 export type LaserCommand = z.infer<typeof laser>;
 
 export function parseMessage(input: unknown): ProtocolMessage {

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const buttons = new Set(['left', 'right', 'middle']);
 const presentationActions = new Set(['next', 'previous', 'start', 'exit', 'blank']);
+const presentationProfiles = new Set(['powerpoint', 'google-slides', 'pdf-viewer']);
 
 function integerInRange(value, minimum, maximum, name) {
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
@@ -69,9 +70,10 @@ contextBridge.exposeInMainWorld('crossPointerProof', {
     integerInRange(deltaX, -1200, 1200, 'deltaX'),
     integerInRange(deltaY, -1200, 1200, 'deltaY'),
   ),
-  pressPresentationAction: (action) => ipcRenderer.invoke(
+  pressPresentationAction: (action, profileId = 'powerpoint') => ipcRenderer.invoke(
     'input:presentation-action',
     validatePresentationAction(action),
+    presentationProfiles.has(profileId) ? profileId : (() => { throw new Error('Unknown presentation profile.'); })(),
   ),
   releaseAllHeldInputs: () => ipcRenderer.invoke('input:release-all'),
   getCapabilities: () => ipcRenderer.invoke('input:get-capabilities'),
