@@ -10,6 +10,7 @@ let localServer;
 let localServerInfo;
 let activeDisplayTarget = 'auto';
 let activePresentationProfile = 'powerpoint';
+let laserConfig = { on: false, size: 85, dotSpacing: 9, popSpeed: 1.2, mode: 'relative' };
 
 function getVirtualDesktopBounds() {
   const displays = screen.getAllDisplays();
@@ -83,14 +84,14 @@ function validatePresentationAction(action) {
   if (!['next', 'previous', 'start', 'exit', 'blank'].includes(action)) {
     throw new Error('action must be next, previous, start, exit, or blank.');
   }
-
-  function validatePresentationProfile(profileId) {
-    if (!['powerpoint', 'google-slides', 'pdf-viewer'].includes(profileId)) {
-      throw new Error('Unknown presentation profile.');
-    }
-    return profileId;
-  }
   return action;
+}
+
+function validatePresentationProfile(profileId) {
+  if (!['powerpoint', 'google-slides', 'pdf-viewer'].includes(profileId)) {
+    throw new Error('Unknown presentation profile.');
+  }
+  return profileId;
 }
 
 function hideLaserAndReleaseInputs() {
@@ -175,6 +176,7 @@ function handleControllerMessage(message) {
       Math.max(0, Math.min(target.bounds.height, message.payload.y * target.bounds.height)),
     );
   } else if (message.type === 'laser.toggle') {
+    laserConfig = { ...laserConfig, on: message.payload.enabled };
     if (message.payload.enabled) {
       overlayWindow.showInactive();
       if (isWindows) windowsInput.setLaserCursorVisible(false);
@@ -191,6 +193,7 @@ function handleControllerMessage(message) {
       popSpeed: message.payload.popSpeed,
       mode: message.payload.mode,
     };
+    laserConfig = config;
     if (config.on) overlayWindow.showInactive();
     else overlayWindow.hide();
     overlayWindow.webContents.send('laser:update-config', config);
@@ -220,6 +223,7 @@ function createLocalTransport() {
     onPendingChange: (pending) => sendDashboardEvent('pairing:pending', pending),
     onDisconnect: () => hideLaserAndReleaseInputs(),
     getDisplayInfo,
+    getHostState: () => ({ displayInfo: getDisplayInfo(), laserConfig }),
   });
   return localServer.start();
 }
@@ -290,6 +294,10 @@ function resizeOverlayToVirtualDesktop() {
 
 function registerIpc() {
   ipcMain.handle('pairing:get-info', () => localServerInfo);
+  ipcMain.handle('pairing:regenerate', async () => {
+    localServerInfo = await localServer.regeneratePairing();
+    return localServerInfo;
+  });
   ipcMain.handle('pairing:approve', (_event, clientId) => localServer.approve(clientId));
   ipcMain.handle('pairing:deny', (_event, clientId) => localServer.deny(clientId));
   ipcMain.handle('pairing:revoke', (_event, clientId) => localServer.revoke(clientId));
@@ -379,7 +387,13 @@ function registerIpc() {
       size: config.size === undefined ? undefined : numberInRange(config.size, 40, 130, 'size'),
       dotSpacing: config.dotSpacing === undefined ? undefined : numberInRange(config.dotSpacing, 6, 16, 'dotSpacing'),
       popSpeed: config.popSpeed === undefined ? undefined : numberInRange(config.popSpeed, 0, 3, 'popSpeed'),
+      mode: config.mode === undefined ? undefined : (config.mode === 'relative' || config.mode === 'absolute' ? config.mode : (() => { throw new Error('mode must be relative or absolute.'); })()),
     };
+    if (validatedConfig.on !== undefined) laserConfig.on = validatedConfig.on;
+    if (validatedConfig.size !== undefined) laserConfig.size = validatedConfig.size;
+    if (validatedConfig.dotSpacing !== undefined) laserConfig.dotSpacing = validatedConfig.dotSpacing;
+    if (validatedConfig.popSpeed !== undefined) laserConfig.popSpeed = validatedConfig.popSpeed;
+    if (validatedConfig.mode !== undefined) laserConfig.mode = validatedConfig.mode;
     if (validatedConfig.on === true) {
       overlayWindow.showInactive();
       if (isWindows) windowsInput.setLaserCursorVisible(false);

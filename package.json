@@ -18,7 +18,8 @@
     "typecheck": "npm run build -w @crosspointer/protocol && npm run typecheck --workspaces --if-present",
     "start": "electron apps/desktop/main.js",
     "desktop:start": "electron apps/desktop/main.js",
-    "desktop:dev": "electron apps/desktop/main.js --dev"
+    "desktop:dev": "electron apps/desktop/main.js --dev",
+    "build:android": "npm run build:android --workspace @crosspointer/mobile"
   },
   "repository": {
     "type": "git",

@@ -2,10 +2,42 @@
   "name": "@crosspointer/desktop-proof",
   "version": "0.1.0",
   "private": true,
+  "main": "main.js",
+  "scripts": {
+    "dist:win": "electron-builder --win nsis zip",
+    "package": "npm run dist:win"
+  },
   "dependencies": {
     "@crosspointer/protocol": "^0.1.0",
     "koffi": "^3.3.3",
     "qrcode": "^1.5.4",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.crosspointer.desktop",
+    "productName": "CrossPointer",
+    "files": [
+      "main.js",
+      "preload.js",
+      "overlay-preload.js",
+      "overlay.html",
+      "dashboard.html",
+      "local-server.js",
+      "windows-input.js",
+      "presentation-profiles.js",
+      "../controller-ui/out/**/*",
+      "../../packages/protocol/dist/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

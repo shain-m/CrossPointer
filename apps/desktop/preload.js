@@ -49,6 +49,7 @@ function validateLaserConfig(config) {
 
 contextBridge.exposeInMainWorld('crossPointerProof', {
   getPairingInfo: () => ipcRenderer.invoke('pairing:get-info'),
+  regeneratePairing: () => ipcRenderer.invoke('pairing:regenerate'),
   approvePairing: (clientId) => ipcRenderer.invoke('pairing:approve', clientId),
   denyPairing: (clientId) => ipcRenderer.invoke('pairing:deny', clientId),
   revokePairing: (clientId) => ipcRenderer.invoke('pairing:revoke', clientId),

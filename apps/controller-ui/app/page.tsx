@@ -255,6 +255,11 @@ export default function ControllerPage() {
     const params = new URLSearchParams(window.location.search);
     setHostLabel(params.get('host') || window.location.hostname || 'Local host');
     nextTransport.connect();
+    const reconnect = () => {
+      if (document.visibilityState === 'visible') nextTransport.reconnectNow();
+    };
+    window.addEventListener('online', reconnect);
+    document.addEventListener('visibilitychange', reconnect);
 
     const cancelInput = () => {
       activePointers.current.clear();
@@ -268,6 +273,8 @@ export default function ControllerPage() {
     window.addEventListener('blur', cancelInput);
     return () => {
       window.removeEventListener('blur', cancelInput);
+      window.removeEventListener('online', reconnect);
+      document.removeEventListener('visibilitychange', reconnect);
       if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current);
       if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
       if (laserFrame.current !== null) cancelAnimationFrame(laserFrame.current);
@@ -276,6 +283,39 @@ export default function ControllerPage() {
       nextTransport.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    let wakeLock: { release: () => Promise<void> } | null = null;
+    const requestWakeLock = async () => {
+      if (connectionState !== 'Connected' || document.visibilityState !== 'visible') return;
+      const wakeLockApi = (navigator as Navigator & {
+        wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
+      }).wakeLock;
+      if (!wakeLockApi) return;
+      try {
+        wakeLock = await wakeLockApi.request('screen');
+      } catch (error) {
+        console.warn(`Unable to acquire screen wake lock: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+    const releaseWakeLock = () => {
+      if (wakeLock) {
+        void wakeLock.release();
+        wakeLock = null;
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void requestWakeLock();
+      else releaseWakeLock();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    void requestWakeLock();
+    if (connectionState !== 'Connected') releaseWakeLock();
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      releaseWakeLock();
+    };
+  }, [connectionState]);
 
   useEffect(() => {
     if (connectionState === 'Disconnected') {

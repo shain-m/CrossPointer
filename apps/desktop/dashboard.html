@@ -134,6 +134,7 @@
         <div>
           <p>Scan this code from a phone on the same Wi-Fi network, then approve the device below.</p>
           <p id="pairing-url">Starting local server…</p>
+          <button id="regenerate-pairing" type="button">Regenerate QR / New Pairing</button>
           <div id="pending-list" aria-live="polite"></div>
         </div>
       </div>
@@ -192,6 +193,7 @@
       const pairingUrl = document.getElementById('pairing-url');
       const pairingQr = document.getElementById('pairing-qr');
       const pendingList = document.getElementById('pending-list');
+      const regeneratePairing = document.getElementById('regenerate-pairing');
       const toggle = document.getElementById('toggle');
       const size = document.getElementById('size');
       const dotSpacing = document.getElementById('dot-spacing');
@@ -306,6 +308,15 @@
         pairingUrl.textContent = info.url;
         pairingQr.src = info.qrDataUrl;
       }).catch((error) => log(`Pairing server: ${error.message}`));
+      regeneratePairing.addEventListener('click', () => {
+        regeneratePairing.disabled = true;
+        api.regeneratePairing().then((info) => {
+          pairingUrl.textContent = info.url;
+          pairingQr.src = info.qrDataUrl;
+          log('New pairing QR generated');
+        }).catch((error) => log(`Pairing server: ${error.message}`))
+          .finally(() => { regeneratePairing.disabled = false; });
+      });
       api.onPairingPending((nextPending) => {
         pending = nextPending;
         renderPending();

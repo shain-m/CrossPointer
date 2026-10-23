@@ -21,7 +21,7 @@ const PROFILES = {
   'google-slides': {
     next: [{ key: VK_RIGHT }],
     previous: [{ key: VK_LEFT }],
-    start: [{ key: VK_CONTROL }, { key: VK_SHIFT }, { key: VK_F }],
+    start: [{ key: VK_CONTROL }, { key: VK_SHIFT }, { key: VK_F5 }],
     blank: [{ key: VK_B }],
     exit: [{ key: VK_ESCAPE }],
   },

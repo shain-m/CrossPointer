@@ -15,6 +15,7 @@ export type DisplayLayout = {
 
 type Listener = (state: ConnectionState) => void;
 type DisplayListener = (layout: DisplayLayout) => void;
+type HostStateListener = (state: { displayInfo: DisplayLayout; laserConfig: Record<string, unknown> }) => void;
 
 export class ControllerTransport {
   private socket: WebSocket | null = null;
@@ -22,6 +23,11 @@ export class ControllerTransport {
   private state: ConnectionState = 'Disconnected';
   private readonly listeners = new Set<Listener>();
   private readonly displayListeners = new Set<DisplayListener>();
+  private readonly hostStateListeners = new Set<HostStateListener>();
+  private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
+  private manualDisconnect = false;
+  private readonly deviceId: string;
 
   get connectionState() {
     return this.state;
@@ -38,9 +44,21 @@ export class ControllerTransport {
     return () => this.displayListeners.delete(listener);
   }
 
+  constructor() {
+    const storedDeviceId = window.localStorage.getItem('crosspointer.deviceId');
+    this.deviceId = storedDeviceId || crypto.randomUUID();
+    window.localStorage.setItem('crosspointer.deviceId', this.deviceId);
+  }
+
+  subscribeHostState(listener: HostStateListener) {
+    this.hostStateListeners.add(listener);
+    return () => this.hostStateListeners.delete(listener);
+  }
+
   connect() {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
+    const pairingToken = params.get('token');
+    const token = window.localStorage.getItem('crosspointer.authToken') || pairingToken;
     const host = params.get('host') || window.location.hostname;
     if (!token || !host) {
       this.setState('Disconnected');
@@ -48,28 +66,64 @@ export class ControllerTransport {
     }
     const port = params.get('port') || window.location.port;
     const address = port ? `${host}:${port}` : host;
+    this.manualDisconnect = false;
     this.setState('Connecting');
-    this.socket = new WebSocket(`ws://${address}/ws?token=${encodeURIComponent(token)}`);
-    this.socket.addEventListener('message', (event) => {
+    const previousSocket = this.socket;
+    previousSocket?.close();
+    this.socket = new WebSocket(`ws://${address}/ws?token=${encodeURIComponent(token)}&deviceId=${encodeURIComponent(this.deviceId)}`);
+    const socket = this.socket;
+    socket.addEventListener('message', (event) => {
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'pairing.pending') this.setState('Pending Approval');
-        if (message.type === 'session.authorized') this.setState('Connected');
+        if (message.type === 'session.authorized') {
+          if (typeof message.token === 'string') window.localStorage.setItem('crosspointer.authToken', message.token);
+          if (typeof message.deviceId === 'string') window.localStorage.setItem('crosspointer.deviceId', message.deviceId);
+          this.reconnectAttempt = 0;
+          this.setState('Connected');
+        }
         if (message.type === 'display.list' && isDisplayLayout(message.payload)) {
           this.displayListeners.forEach((listener) => listener(message.payload));
+        }
+        if (message.type === 'host.state' && message.payload) {
+          this.hostStateListeners.forEach((listener) => listener(message.payload));
         }
       } catch {
         this.setState('Disconnected');
       }
     });
-    this.socket.addEventListener('close', () => this.setState('Disconnected'));
-    this.socket.addEventListener('error', () => this.setState('Disconnected'));
+    socket.addEventListener('close', (event) => {
+      if (this.socket !== socket) return;
+      if (event.code === 1008) window.localStorage.removeItem('crosspointer.authToken');
+      this.setState('Disconnected');
+      this.scheduleReconnect();
+    });
+    socket.addEventListener('error', () => {
+      if (this.socket === socket) this.setState('Disconnected');
+    });
   }
 
   disconnect() {
+    this.manualDisconnect = true;
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
     this.setState('Disconnected');
+  }
+
+  reconnectNow() {
+    if (this.state !== 'Connected') this.connect();
+  }
+
+  private scheduleReconnect() {
+    if (this.manualDisconnect || this.reconnectTimer !== null) return;
+    const delays = [1500, 3000, 5000];
+    const delay = delays[Math.min(this.reconnectAttempt, delays.length - 1)];
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
   }
 
   send(message: Omit<ProtocolMessage, 'version' | 'sequence'>) {

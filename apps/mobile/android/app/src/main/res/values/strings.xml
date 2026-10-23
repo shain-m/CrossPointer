@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CrossPointer Controller</string>
+    <string name="title_activity_main">CrossPointer Controller</string>
+    <string name="package_name">com.crosspointer.controller</string>
+    <string name="custom_url_scheme">com.crosspointer.controller</string>
+</resources>
